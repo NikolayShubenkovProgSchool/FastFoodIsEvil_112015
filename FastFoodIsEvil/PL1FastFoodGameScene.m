@@ -21,6 +21,8 @@ typedef NS_ENUM(NSInteger, GameState) {
 
 @property (nonatomic) GameState state;
 @property (nonatomic, strong) NSMutableArray *objectsToThrow;
+@property (nonatomic, strong) SKNode *nodeToThrow;
+@property (nonatomic, strong) SKPhysicsBody *bodyToThrow;
 
 @end
 
@@ -64,17 +66,80 @@ typedef NS_ENUM(NSInteger, GameState) {
     }
 }
 
+#pragma mark - Touch Handling
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    switch (self.state) {
+        case GameStateReadyToThrow: {
+            NSParameterAssert(self.nodeToThrow);
+            UITouch *touch = [touches anyObject];
+            CGPoint touchPoint = [touch locationInNode:self];
+            if ([self nodeAtPoint:touchPoint] == self.nodeToThrow){
+                self.state = GameStateDragging;
+            }
+            break;
+        }
+        default: {
+            break;
+        }
+    }
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    if (self.state != GameStateDragging){
+        return;
+    }
+    UITouch *touch = [touches anyObject];
+    CGPoint touchPosition = [touch locationInNode:self];
+    
+    self.nodeToThrow.position = touchPosition;
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    if (self.state != GameStateDragging){
+        return;
+    }
+    CGVector force;
+    force.dx = [self startPosition].x - self.nodeToThrow.position.x;
+    force.dy = [self startPosition].y - self.nodeToThrow.position.y;
+    force.dx = sqrtf(fabs(force.dx)) * 3;
+    force.dy = sqrtf(fabs(force.dy)) * 3;
+    NSParameterAssert(self.bodyToThrow);
+    self.nodeToThrow.physicsBody = self.bodyToThrow;
+    [self throwNode:self.nodeToThrow withForce:force];
+}
+
 #pragma mark - Game Mechanics
+
+- (void)throwNode:(SKNode *)node withForce:(CGVector)force {
+    
+    
+    self.state = GameStateThrowing;
+    [node.physicsBody applyImpulse:force];
+}
+
+- (CGPoint)startPosition {
+    SKNode *startPosition = [self childNodeWithName:@"StartPosition"];
+    NSParameterAssert(startPosition);
+    return startPosition.position;
+}
 
 - (void)putNodeToThrowToStartPosition:(SKNode *)aNode {
     NSParameterAssert(aNode);
-    SKNode *startPosition = [self childNodeWithName:@"StartPosition"];
-    NSParameterAssert(startPosition);
+    NSParameterAssert(aNode.physicsBody);
     
-    [aNode runAction:[SKAction moveTo:startPosition.position
+    [aNode removeFromParent];
+    [self addChild:aNode];
+    
+    //Временно снимем с нода физическое тело, чтоб он никуда не уходил
+    self.bodyToThrow  = aNode.physicsBody;
+    aNode.physicsBody = nil;
+    
+    [aNode runAction:[SKAction moveTo:[self startPosition]
                              duration:1]
           completion:^{
               self.state = GameStateReadyToThrow;
+              self.nodeToThrow = aNode;
               [self updateState];
           }];
 }
